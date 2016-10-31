@@ -107,8 +107,7 @@ abstract class AbstractCxxSymlinkTreeHeaders extends CxxHeaders {
     if (symlinkTree.getHeaderMap().isPresent()) {
       builder.setHeaderMap(
           new BuildTargetSourcePath(
-              symlinkTree.getBuildTarget(),
-              symlinkTree.getHeaderMap().get()));
+              symlinkTree.getBuildTarget()));
     }
     return builder.build();
   }
