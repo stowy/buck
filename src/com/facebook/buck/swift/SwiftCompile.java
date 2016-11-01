@@ -46,11 +46,11 @@ import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MkdirStep;
+import com.facebook.buck.util.MoreCollectors;
 import com.facebook.buck.util.MoreIterables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -58,6 +58,7 @@ import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 
@@ -93,7 +94,7 @@ class SwiftCompile
   private final Optional<SourcePath> bridgingHeader;
   private final SwiftBuckConfig swiftBuckConfig;
 
-  private final Iterable<CxxPreprocessorInput> cxxPreprocessorInputs;
+  private final Collection<CxxPreprocessorInput> cxxPreprocessorInputs;
 
   SwiftCompile(
       CxxPlatform cxxPlatform,
@@ -125,9 +126,11 @@ class SwiftCompile
     this.srcs = ImmutableSortedSet.copyOf(srcs);
     this.enableObjcInterop = enableObjcInterop.orElse(true);
     this.bridgingHeader = bridgingHeader;
-    this.hasMainEntry = FluentIterable.from(srcs).firstMatch(
+    this.hasMainEntry = Iterables.tryFind(
+        srcs,
         input -> SWIFT_MAIN_FILENAME.equalsIgnoreCase(
-            getResolver().getAbsolutePath(input).getFileName().toString())).isPresent();
+            getResolver().getAbsolutePath(input).getFileName().toString()))
+        .isPresent();
     performChecks(params);
   }
 
@@ -174,12 +177,23 @@ class SwiftCompile
     compilerCommand.addAll(
         MoreIterables.zipAndConcat(Iterables.cycle("-Xcc"),
             getSwiftIncludeArgs()));
+
     compilerCommand.addAll(MoreIterables.zipAndConcat(
         Iterables.cycle(INCLUDE_FLAG),
-        FluentIterable.from(getDeps())
-            .filter(SwiftCompile.class)
-            .transform(SourcePaths.getToBuildTargetSourcePath())
-            .transform(input -> getResolver().getAbsolutePath(input).toString())));
+        getDeps().stream()
+            .filter(SwiftCompile.class::isInstance)
+            .map(SwiftCompile.class::cast)
+            .map(SourcePaths.getToBuildTargetSourcePath()::apply)
+            .map(input -> getResolver().getAbsolutePath(input).toString())
+            .collect(MoreCollectors.toImmutableSet())));
+
+    compilerCommand.addAll(MoreIterables.zipAndConcat(
+        Iterables.cycle(INCLUDE_FLAG),
+        cxxPreprocessorInputs.stream()
+            .flatMap(input -> input.getIncludes().stream())
+            .map(input -> input.getRoot())
+            .map(input -> getResolver().getAbsolutePath(input).toString())
+            .collect(MoreCollectors.toImmutableSet())));
 
     Optional<Iterable<String>> configFlags = swiftBuckConfig.getFlags();
     if (configFlags.isPresent()) {
