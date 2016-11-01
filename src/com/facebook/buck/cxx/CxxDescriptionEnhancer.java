@@ -380,7 +380,7 @@ public class CxxDescriptionEnhancer {
 
     ImmutableList.Builder<CxxHeaders> allIncludes = ImmutableList.builder();
     for (HeaderSymlinkTree headerSymlinkTree : headerSymlinkTrees) {
-      allIncludes.add(
+      allIncludes.addAll(
           CxxSymlinkTreeHeaders.from(headerSymlinkTree, CxxPreprocessables.IncludeType.LOCAL));
     }
 

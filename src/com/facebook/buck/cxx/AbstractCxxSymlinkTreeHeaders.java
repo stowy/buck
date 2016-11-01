@@ -25,6 +25,7 @@ import com.facebook.buck.util.OptionalCompat;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 
 import org.immutables.value.Value;
@@ -47,7 +48,7 @@ abstract class AbstractCxxSymlinkTreeHeaders extends CxxHeaders {
 
   /**
    * @return the path to add to the preprocessor search path to find the includes.  This defaults
-   *     to the root, but can be overridden to use an alternate path.
+   * to the root, but can be overridden to use an alternate path.
    */
   @Override
   @Value.Default
@@ -90,7 +91,7 @@ abstract class AbstractCxxSymlinkTreeHeaders extends CxxHeaders {
   /**
    * @return a {@link CxxHeaders} constructed from the given {@link HeaderSymlinkTree}.
    */
-  public static CxxSymlinkTreeHeaders from(
+  public static ImmutableSet<CxxHeaders> from(
       HeaderSymlinkTree symlinkTree,
       CxxPreprocessables.IncludeType includeType) {
     CxxSymlinkTreeHeaders.Builder builder = CxxSymlinkTreeHeaders.builder();
@@ -109,7 +110,19 @@ abstract class AbstractCxxSymlinkTreeHeaders extends CxxHeaders {
           new BuildTargetSourcePath(
               symlinkTree.getBuildTarget()));
     }
-    return builder.build();
+
+    ImmutableSet.Builder<CxxHeaders> cxxHeadersBuilder = ImmutableSet.<CxxHeaders>builder()
+        .add(builder.build());
+    if (symlinkTree.getBuildTarget().getFlavors().contains(
+        CxxDescriptionEnhancer.EXPORTED_HEADER_SYMLINK_TREE_FLAVOR)) {
+      cxxHeadersBuilder.add(
+          CxxHeadersDir.of(includeType, new BuildTargetSourcePath(
+              symlinkTree.getBuildTarget(),
+              symlinkTree
+                  .getProjectFilesystem()
+                  .relativize(symlinkTree.getRoot()))));
+    }
+    return cxxHeadersBuilder.build();
   }
 
 }

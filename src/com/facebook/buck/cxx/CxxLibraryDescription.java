@@ -177,7 +177,7 @@ public class CxxLibraryDescription implements
         params.getBuildTarget(),
         CxxPreprocessorInput.builder()
             .putAllPreprocessorFlags(exportedPreprocessorFlags)
-            .addIncludes(
+            .addAllIncludes(
                 CxxSymlinkTreeHeaders.from(symlinkTree, CxxPreprocessables.IncludeType.LOCAL))
             .addAllFrameworks(frameworks)
             .build());
