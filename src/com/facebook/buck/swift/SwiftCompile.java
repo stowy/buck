@@ -26,6 +26,7 @@ import com.facebook.buck.cxx.CxxPlatform;
 import com.facebook.buck.cxx.CxxPreprocessables;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.HeaderVisibility;
+import com.facebook.buck.cxx.LinkerMapMode;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
@@ -45,10 +46,11 @@ import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MkdirStep;
+import com.facebook.buck.util.MoreCollectors;
 import com.facebook.buck.util.MoreIterables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
-import com.google.common.collect.FluentIterable;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -56,6 +58,7 @@ import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 
@@ -91,7 +94,7 @@ class SwiftCompile
   private final Optional<SourcePath> bridgingHeader;
   private final SwiftBuckConfig swiftBuckConfig;
 
-  private final Iterable<CxxPreprocessorInput> cxxPreprocessorInputs;
+  private final Collection<CxxPreprocessorInput> cxxPreprocessorInputs;
 
   SwiftCompile(
       CxxPlatform cxxPlatform,
@@ -123,9 +126,22 @@ class SwiftCompile
     this.srcs = ImmutableSortedSet.copyOf(srcs);
     this.enableObjcInterop = enableObjcInterop.orElse(true);
     this.bridgingHeader = bridgingHeader;
-    this.hasMainEntry = FluentIterable.from(srcs).firstMatch(
+    this.hasMainEntry = Iterables.tryFind(
+        srcs,
         input -> SWIFT_MAIN_FILENAME.equalsIgnoreCase(
-            getResolver().getAbsolutePath(input).getFileName().toString())).isPresent();
+            getResolver().getAbsolutePath(input).getFileName().toString()))
+        .isPresent();
+    performChecks(params);
+  }
+
+  private void performChecks(BuildRuleParams params) {
+    Preconditions.checkArgument(
+        !LinkerMapMode.FLAVOR_DOMAIN.containsAnyOf(params.getBuildTarget().getFlavors()),
+        "SwiftCompile %s should not be created with LinkerMapMode flavor (%s)",
+        this,
+        LinkerMapMode.FLAVOR_DOMAIN);
+    Preconditions.checkArgument(
+        !params.getBuildTarget().getFlavors().contains(CxxDescriptionEnhancer.SHARED_FLAVOR));
   }
 
   private SwiftCompileStep makeCompileStep() {
@@ -161,12 +177,23 @@ class SwiftCompile
     compilerCommand.addAll(
         MoreIterables.zipAndConcat(Iterables.cycle("-Xcc"),
             getSwiftIncludeArgs()));
+
     compilerCommand.addAll(MoreIterables.zipAndConcat(
         Iterables.cycle(INCLUDE_FLAG),
-        FluentIterable.from(getDeps())
-            .filter(SwiftCompile.class)
-            .transform(SourcePaths.getToBuildTargetSourcePath())
-            .transform(input -> getResolver().getAbsolutePath(input).toString())));
+        getDeps().stream()
+            .filter(SwiftCompile.class::isInstance)
+            .map(SwiftCompile.class::cast)
+            .map(SourcePaths.getToBuildTargetSourcePath()::apply)
+            .map(input -> getResolver().getAbsolutePath(input).toString())
+            .collect(MoreCollectors.toImmutableSet())));
+
+    compilerCommand.addAll(MoreIterables.zipAndConcat(
+        Iterables.cycle(INCLUDE_FLAG),
+        cxxPreprocessorInputs.stream()
+            .flatMap(input -> input.getIncludes().stream())
+            .map(input -> input.getRoot())
+            .map(input -> getResolver().getAbsolutePath(input).toString())
+            .collect(MoreCollectors.toImmutableSet())));
 
     Optional<Iterable<String>> configFlags = swiftBuckConfig.getFlags();
     if (configFlags.isPresent()) {

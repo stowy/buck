@@ -162,7 +162,7 @@ public class CxxPreprocessables {
             Suppliers.ofInstance(ImmutableSortedSet.of()));
 
     if (useHeaderMap) {
-      return new HeaderSymlinkTreeWithHeaderMap(
+      return HeaderSymlinkTreeWithHeaderMap.create(
           paramsWithoutDeps,
           resolver,
           root,
@@ -201,7 +201,7 @@ public class CxxPreprocessables {
         rule.getClass(),
         target);
     HeaderSymlinkTree symlinkTree = (HeaderSymlinkTree) rule;
-    builder.addIncludes(CxxSymlinkTreeHeaders.from(symlinkTree, includeType));
+    builder.addAllIncludes(CxxSymlinkTreeHeaders.from(symlinkTree, includeType));
     return builder;
   }
 
